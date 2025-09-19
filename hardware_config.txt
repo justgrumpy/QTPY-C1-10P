@@ -1,0 +1,19 @@
+# Baby Chopper Hardware Configuration
+# For Adafruit QT Py (RP2040 or SAMD21)
+
+# Pin Assignments:
+# A0/D0 - NeoPixel Strip (10 LEDs recommended)
+# A1/D1 - Buzzer/Speaker (passive buzzer recommended)
+# A2/D2 - Button (with internal pullup)
+# LED  - Onboard status LED
+
+# Hardware Recommendations:
+# - 10-pixel NeoPixel strip or ring for rotor/navigation lights
+# - Small passive buzzer (3-5V) for sound effects
+# - Momentary push button for mode control
+# - 3.7V LiPo battery for portable operation
+
+# Optional enhancements:
+# - Servo motor on A3 for physical rotor movement
+# - Additional LEDs for landing lights
+# - Potentiometer for speed control

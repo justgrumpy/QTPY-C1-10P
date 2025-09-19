@@ -1,0 +1,4 @@
+# CircuitPython Library Requirements for Baby Chopper
+# Copy these libraries to the /lib folder on your QT Py
+
+adafruit_neopixel

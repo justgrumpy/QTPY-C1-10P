@@ -1,0 +1,57 @@
+Baby Chopper Wiring Diagram for Adafruit QT Py
+================================================
+
+QT Py Pinout:
+```
+           QT Py RP2040/SAMD21
+         ┌─────────────────────┐
+     RX  │ A0/D0         3V3   │  
+     TX  │ A1/D1         GND   │  
+         │ A2/D2         RESET │  
+         │ A3/D3         LED   │  
+         │ SDA           SCL   │  
+         │ SCK           MISO  │  
+         │ MOSI          5V    │  
+         └─────────────────────┘
+             USB-C Connection
+```
+
+Component Connections:
+```
+NeoPixel Strip (10 LEDs):
+├── Data In  → A0/D0
+├── VCC      → 3V3
+└── GND      → GND
+
+Passive Buzzer:
+├── Positive → A1/D1  
+└── Negative → GND
+
+Push Button:
+├── Pin 1    → A2/D2
+└── Pin 2    → GND
+(Internal pullup used)
+
+Optional Servo (physical rotor):
+├── Signal   → A3/D3
+├── VCC      → 3V3 or 5V
+└── GND      → GND
+```
+
+Power Options:
+1. USB-C cable (development/testing)
+2. 3.7V LiPo battery via JST connector
+3. External 5V supply via 5V pin
+
+Safety Notes:
+- Never exceed 5V on any pin
+- Total current draw should not exceed 500mA from 3V3 pin
+- Use appropriate gauge wire for all connections
+- Double-check polarity before powering on
+
+Recommended Assembly:
+1. Solder header pins to QT Py
+2. Connect components on breadboard first for testing  
+3. Run test_components.py to verify all connections
+4. Transfer to permanent prototype board if desired
+5. Add battery for portable operation
