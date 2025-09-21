@@ -5,7 +5,7 @@ This project implements a FlySky iBUS receiver for controlling a 3D printed Baby
 ## Project Overview
 
 This code controls a **3D printed Baby Chopper droid** with:
-- **Servos 1 & 2**: Droid movement (left/right wheels or tracks)
+- **Servos 1 & 2**: Differential drive system (tank steering)
 - **Servo 3**: Head rotation/spinning
 - **LED Feedback**: Visual indication of switch positions
 - **Future Features**: DFPlayer Pro for sound effects and animations
@@ -16,20 +16,20 @@ This code controls a **3D printed Baby Chopper droid** with:
 - **Adafruit QT Py M0** (CircuitPython controller)
 - **FlySky transmitter** (e.g., FS-i6, FS-i6X) 
 - **FlySky FS-A8S receiver** (iBUS output) - *other FS receivers should work too*
-- **3x Continuous rotation servos** (for droid movement + head)
+- **3x Continuous rotation servos** (for differential drive + head rotation)
 - **Connecting wires**
 
 ### Future Additions:
 - **DFPlayer Pro** (sound effects module)
 - **Speaker** (for droid sounds)
-- **Additional switches** (for pre-programmed animations)
+- **POT Channel**: Volume control for audio levels
 
 ## Wiring
 
 ### QT Py M0 Connections:
 - **A7 (RX)**: Connect to receiver iBUS signal output
-- **A2**: Servo 1 signal wire (left movement)
-- **A3**: Servo 2 signal wire (right movement)  
+- **A2**: Servo 1 signal wire (differential drive)
+- **A3**: Servo 2 signal wire (differential drive)  
 - **SDA**: Servo 3 signal wire (head rotation)
 - **3V**: Receiver power (if using 3.3V receiver)
 - **GND**: Common ground
@@ -59,19 +59,130 @@ This code controls a **3D printed Baby Chopper droid** with:
 ## Control Mapping
 
 ### Servo Channels:
-- **Channel 1**: Servo 1 (A2) - Left movement
-- **Channel 2**: Servo 2 (A3) - Right movement  
+- **Channel 1**: Servo 1 (A2) - Differential drive motor 1
+- **Channel 2**: Servo 2 (A3) - Differential drive motor 2  
 - **Channel 4**: Servo 3 (SDA) - Head rotation
 
 ### Switch Channels:
-- **Channel 5**: 2-position switch - Purple/Orange LED feedback
-- **Channel 6**: 2-position switch - Cyan/Blue LED feedback
-- **Channel 8**: 3-position switch - Magenta/Cyan/Yellow LED feedback
+- **Channel 5**: 2-position switch - Sound effects and animations (currently LED feedback)
+- **Channel 6**: 2-position switch - Sound effects and animations (currently LED feedback)
+- **Channel 8**: 3-position switch - Sound effects and animations (currently LED feedback)
 
 ### Future Planned:
 - **POT Channel**: Volume control for DFPlayer Pro
-- **Additional Switches**: Pre-programmed animation triggers
-- **Sound Integration**: Coordinated movement and sound effects
+- **Switch Sound Effects**: Channels 5, 6, 8 trigger droid sounds
+- **Switch Animations**: Coordinated movement sequences with sounds
+
+## System Architecture
+
+### Data Flow Overview
+```mermaid
+graph TB
+    A[FlySky Transmitter] --> B[FS-A8S Receiver]
+    B --> C[iBUS Signal 115200 baud]
+    C --> D[QT Py A7 RX Pin]
+    D --> E[iBUS Frame Parser]
+    E --> F[Channel Extractor]
+    F --> G[Servo Controller]
+    F --> H[Switch Monitor]
+    G --> I[Servo 1 - A2 Drive Motor 1]
+    G --> J[Servo 2 - A3 Drive Motor 2]
+    G --> K[Servo 3 - SDA Head Rotation]
+    H --> L[NeoPixel LED Visual Feedback]
+```
+
+### iBUS Frame Processing Sequence
+```mermaid
+sequenceDiagram
+    participant TX as Transmitter
+    participant RX as FS-A8S Receiver
+    participant QT as QT Py M0
+    participant Servo as Servos
+    participant LED as NeoPixel
+    
+    loop Every 20ms
+        TX->>RX: Control inputs
+        RX->>QT: 32-byte iBUS frame
+        
+        Note over QT: Frame validation (0x20, 0x40 header)
+        
+        QT->>QT: Extract channels 1,2,4
+        QT->>QT: Normalize to -1.0 to 1.0
+        QT->>QT: Apply deadband (±0.02)
+        QT->>Servo: Update throttle values
+        
+        QT->>QT: Extract channels 5,6,8
+        QT->>QT: Detect position changes
+        
+        alt Switch position changed
+            QT->>LED: Show color for 1 second
+            QT->>LED: Turn off
+        end
+    end
+```
+
+### Switch State Machine
+```mermaid
+stateDiagram-v2
+    [*] --> Reading
+    Reading --> Checking: Extract raw value
+    Checking --> Changed: Position differs
+    Checking --> Reading: Same position
+    Changed --> LEDDisplay: Show color
+    LEDDisplay --> LEDOff: After 1 second
+    LEDOff --> Reading
+    
+    state "2-Position Switch Logic" as TwoPos {
+        [*] --> Low
+        Low --> High: Value > 1500
+        High --> Low: Value < 1500
+    }
+    
+    state "3-Position Switch Logic" as ThreePos {
+        [*] --> Middle
+        Middle --> Low: Value < 1300
+        Middle --> High: Value > 1700
+        Low --> Middle: Value > 1300
+        High --> Middle: Value < 1700
+    }
+```
+
+### iBUS Frame Structure
+```mermaid
+packet-beta
+    title iBUS Frame (32 bytes)
+    0-7: "Header"
+    8-15: "0x20"
+    16-23: "0x40"
+    24-31: "Ch1_L"
+    32-39: "Ch1_H"
+    40-47: "Ch2_L"
+    48-55: "Ch2_H"
+    56-63: "..."
+    64-71: "Ch14_L"
+    72-79: "Ch14_H"
+    80-87: "CRC_L"
+    88-95: "CRC_H"
+```
+
+### Servo Control Flow
+```mermaid
+flowchart TD
+    A[Raw iBUS Value 800-2200] --> B{Valid Range?}
+    B -->|No| C[Use Default 1500]
+    B -->|Yes| D[Normalize to -1.0 to 1.0]
+    D --> E{Within Deadband ±0.02?}
+    E -->|Yes| F[Set Throttle = 0]
+    E -->|No| G[Set Servo Throttle]
+    C --> F
+    F --> H[Servo Motor]
+    G --> H
+    
+    style A fill:#e1f5fe
+    style H fill:#c8e6c9
+    style F fill:#ffecb3
+    style G fill:#ffecb3
+```
 
 ## Code Structure
 
@@ -114,40 +225,59 @@ while True:
 
 ## LED Status Indicators
 
-The built-in NeoPixel provides feedback for switch positions:
+The built-in NeoPixel currently provides feedback for switch positions *(will be replaced with sound effects and animations)*:
 
 ### Switch 1 (Channel 5) - 2 Position:
-- **Purple**: Position 0 (Low)
-- **Orange**: Position 1 (High)
+- **Purple**: Position 0 (Low) - *Future: Sound effect trigger*
+- **Orange**: Position 1 (High) - *Future: Different sound effect*
 
 ### Switch 2 (Channel 6) - 2 Position:  
-- **Cyan**: Position 0 (Low)
-- **Blue**: Position 1 (High)
+- **Cyan**: Position 0 (Low) - *Future: Animation trigger*
+- **Blue**: Position 1 (High) - *Future: Different animation*
 
 ### Switch 3 (Channel 8) - 3 Position:
-- **Magenta**: Position 0 (Low)
-- **Cyan**: Position 1 (Middle)  
-- **Yellow**: Position 2 (High)
+- **Magenta**: Position 0 (Low) - *Future: Animation mode 1*
+- **Cyan**: Position 1 (Middle) - *Future: Animation mode 2*
+- **Yellow**: Position 2 (High) - *Future: Animation mode 3*
 
 ### Startup:
 - **White**: System starting up
 
 ## Baby Chopper Droid Control
 
+### Tank Steering System:
+The Baby Chopper uses **differential drive** (tank steering) where channels 1 and 2 are mixed to create:
+
+#### Forward/Backward Movement:
+- **Both motors same direction**: Droid moves forward or backward
+- **Channel 1 & 2 receive same throttle values**
+
+#### Rotational Movement:
+- **Motors opposite directions**: Droid spins in place
+- **Right turn**: Channel 1 forward + Channel 2 reverse → Clockwise spin
+- **Left turn**: Channel 1 reverse + Channel 2 forward → Counter-clockwise spin
+
+#### Mixed Movement:
+- **Differential speeds**: Curved movement paths
+- **One motor faster**: Droid curves toward slower motor side
+
 ### Movement Control:
-- **Left Stick Horizontal**: Differential steering (channels 1 & 2)
-- **Right Stick Vertical**: Head rotation speed (channel 4)
+- **Forward Stick**: Both drive motors forward (droid moves forward)
+- **Backward Stick**: Both drive motors reverse (droid moves backward)
+- **Right Stick**: Motors rotate opposite directions (droid spins clockwise)
+- **Left Stick**: Motors rotate opposite directions (droid spins counter-clockwise)
+- **Head Control**: Right stick vertical controls head rotation speed (channel 4)
 - **Deadband**: 2% around center to prevent drift
 
 ### Switch Functions (Current):
-- **Switches 1 & 2**: Visual feedback only (future animation triggers)
-- **Switch 3**: Visual feedback only (future mode selection)
+- **Switches 1 & 2**: LED feedback only (will become sound effect triggers)
+- **Switch 3**: LED feedback only (will become animation mode selection)
 
 ### Future Enhancements:
-- **Sound Effects**: DFPlayer Pro integration
-- **Animations**: Pre-programmed movement sequences
+- **Sound Effects**: DFPlayer Pro integration with switch triggers
+- **Animations**: Pre-programmed movement sequences triggered by switches
 - **Volume Control**: POT channel for audio levels
-- **Sound Triggers**: Switch-activated droid sounds
+- **LED Replacement**: Switch LED feedback replaced with sound/movement responses
 
 ## iBUS Protocol Implementation
 
@@ -177,8 +307,8 @@ def extract_channel_value(data, byte_pos):
 ```python
 # Create servos for Baby Chopper
 servos = [
-    servo.ContinuousServo(pwmio.PWMOut(board.A2, frequency=50)),  # Left movement
-    servo.ContinuousServo(pwmio.PWMOut(board.A3, frequency=50)),  # Right movement  
+    servo.ContinuousServo(pwmio.PWMOut(board.A2, frequency=50)),  # Drive motor 1
+    servo.ContinuousServo(pwmio.PWMOut(board.A3, frequency=50)),  # Drive motor 2  
     servo.ContinuousServo(pwmio.PWMOut(board.SDA, frequency=50))  # Head rotation
 ]
 
@@ -243,9 +373,10 @@ We discovered that CircuitPython on QT Py M0 works best with simpler approaches:
 - ✅ Elegant inline code structure
 
 ### Phase 2 (Planned):
-- 🔄 DFPlayer Pro integration
+- 🔄 DFPlayer Pro integration  
 - 🔄 POT volume control
-- 🔄 Switch-triggered sound effects
+- 🔄 Replace LED feedback with sound effects
+- 🔄 Switch-triggered animations
 
 ### Phase 3 (Future):
 - 📋 Pre-programmed movement animations
