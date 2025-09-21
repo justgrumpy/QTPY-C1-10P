@@ -25,14 +25,14 @@ colors = {
 
 # Configuration
 CONFIG = {
-    'servo_channels': [1, 2, 4],      # iBUS channels for servos
+    'servo_channels': [1, 2, 4],     # iBUS channels for servos
     'servo_byte_pos': [2, 4, 8],     # Byte positions in iBUS frame
     'switch_channels': [5, 6, 8],    # iBUS channels for switches
     'switch_byte_pos': [10, 12, 16], # Byte positions for switches
     'switch_colors': [
-        [colors['purple'], colors['orange']],              # Switch 1: 2-position
-        [colors['cyan'], colors['blue']],                  # Switch 2: 2-position  
-        [colors['magenta'], colors['cyan'], colors['yellow']] # Switch 3: 3-position
+        [colors['purple'], colors['orange']],
+        [colors['cyan'], colors['blue']],
+        [colors['magenta'], colors['cyan'], colors['yellow']]
     ],
     'deadband': 0.02,
     'switch_3pos_thresholds': [1300, 1700]  # Low/Middle, Middle/High
@@ -65,7 +65,7 @@ def normalize_servo_value(raw_value):
 def get_switch_position(raw_value, is_3pos=False):
     """Get switch position from raw iBUS value"""
     if not (800 <= raw_value <= 2200):
-        return 1  # Default middle position
+        return 0  # Default up position
     
     if is_3pos:
         if raw_value < CONFIG['switch_3pos_thresholds'][0]:
@@ -76,7 +76,7 @@ def get_switch_position(raw_value, is_3pos=False):
             return 1  # Middle
     else:
         return 0 if raw_value < 1500 else 1
-
+    
 def show_switch_color(switch_idx, position):
     """Display LED color for switch change"""
     color = CONFIG['switch_colors'][switch_idx][position]
@@ -119,8 +119,8 @@ led[0] = colors['white']
 time.sleep(1)
 led[0] = colors['off']
 
-# Initialize switch states (start with middle positions)
-switch_states = [1, 1, 1]
+# Initialize switch states (start with up/default positions)
+switch_states = [0, 0, 0]
 
 # Main loop - clean and simple!
 while True:
