@@ -12,6 +12,19 @@ import ibus
 # Initialize LED
 led = NeoPixel(board.NEOPIXEL, 1)
 
+# Set up UART
+ibus_uart = UART(None, board.RX, baudrate=115200, timeout=0.01)
+
+# Set up UART for DFPlayer Pro (TX only on D2)
+dfplayer_uart = UART(board.D10, None, baudrate=115200)
+
+# Create servos
+servos = [
+    ContinuousServo(PWMOut(board.A2, frequency=50)),
+    ContinuousServo(PWMOut(board.A3, frequency=50)),
+    ContinuousServo(PWMOut(board.SDA, frequency=50))
+]
+
 # Configuration
 CONFIG = {
     'servo_channels': [1, 2, 4],     # iBUS channels for servos
@@ -29,23 +42,10 @@ CONFIG = {
     'switch_3pos_thresholds': [1300, 1700]  # Low/Middle, Middle/High
 }
 
-# Set up UART
-uart = UART(None, board.RX, baudrate=115200, timeout=0.01)
-
-# Set up UART for DFPlayer Pro (TX only on D2)
-dfplayer_uart = UART(board.D10, None, baudrate=115200)
-
 # Sound cycling counters
 ch5_counter = 0
 ch6_counter = 0
 current_volume = 8  # Track current volume to avoid unnecessary updates
-
-# Create servos
-servos = [
-    ContinuousServo(PWMOut(board.A2, frequency=50)),
-    ContinuousServo(PWMOut(board.A3, frequency=50)),
-    ContinuousServo(PWMOut(board.SDA, frequency=50))
-]
 
 def show_switch_color(switch_idx, position):
     """Display LED color for switch change and play cycling sounds for channels 5 & 6"""
@@ -129,7 +129,7 @@ collect()
 # Main loop - clean and simple!
 loop_counter = 0
 while True:
-    data = uart.read(32)
+    data = ibus_uart.read(32)
     if data:
         parse_ibus_frame(data)
     
