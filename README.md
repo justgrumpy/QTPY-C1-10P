@@ -1,6 +1,6 @@
 # QT Py M0 iBUS Baby Chopper Controller
 
-This project implements a FlySky iBUS receiver for controlling a 3D printed Baby Chopper droid (Mr. Baddeley design) using the Adafruit QT Py M0. The controller manages servo movement and head rotation with LED feedback for switch positions.
+This project implements a FlySky iBUS receiver for controlling a 3D printed Baby Chopper droid (Mr. Baddeley design) using the Adafruit QT Py M0. The controller manages servo movement and head rotation with sounds and LED feedback for switch positions.
 
 ## Project Overview
 
@@ -8,7 +8,7 @@ This code controls a **3D printed Baby Chopper droid** with:
 - **Servos 1 & 2**: Differential drive system (tank steering)
 - **Servo 3**: Head rotation/spinning
 - **LED Feedback**: Visual indication of switch positions
-- **Future Features**: DFPlayer Pro for sound effects and animations
+- **DFPlayer Pro**: Sound effects and volume control (via POT)
 
 ## Hardware Requirements
 
@@ -17,12 +17,9 @@ This code controls a **3D printed Baby Chopper droid** with:
 - **FlySky transmitter** (e.g., FS-i6, FS-i6X) 
 - **FlySky FS-A8S receiver** (iBUS output) - *other FS receivers should work too*
 - **3x Continuous rotation servos** (for differential drive + head rotation)
-- **Connecting wires**
-
-### Future Additions:
 - **DFPlayer Pro** (sound effects module)
 - **Speaker** (for droid sounds)
-- **POT Channel**: Volume control for audio levels
+- **Connecting wires**
 
 ## Wiring
 
@@ -31,6 +28,7 @@ This code controls a **3D printed Baby Chopper droid** with:
 - **A2**: Servo 1 signal wire (differential drive)
 - **A3**: Servo 2 signal wire (differential drive)  
 - **SDA**: Servo 3 signal wire (head rotation)
+- **D10**: Connect to DFPlayer Pro RX
 - **3V**: Receiver power (if using 3.3V receiver)
 - **GND**: Common ground
 - **Built-in NeoPixel**: Switch position feedback
@@ -40,21 +38,23 @@ This code controls a **3D printed Baby Chopper droid** with:
 - **Power**: Connect to appropriate power source (3.3V or 5V)
 - **Ground**: Connect to QT Py GND
 
+### DFPlayer Pro:
+- **RX**: Connect to QT Py D10
+- **Power**: Connect to appropriate power source (3.3V or 5V)
+- **Ground**: Connect to QT Py GND
+
 ## Current Implementation
 
 ### Active Files:
-- **`code.py`**: Main controller with inline iBUS parsing
-  - Elegant, refactored design with helper functions
+- **`code.py`**: Main controller, now focused on application logic
+  - Imports iBUS and DFPlayer logic from libraries
   - Direct servo control (channels 1, 2, 4)
   - Switch monitoring with LED feedback (channels 5, 6, 8)
+  - **DFPlayer Pro sound effects and volume control (channel 7)**
   - Configuration-driven approach for easy customization
 
-### Inactive Files (For Reference):
-- **`lib/ibus.py`**: Minimal placeholder library
-- **`lib/servo_controller.py`**: Minimal placeholder library  
-- **`code_*.py`**: Alternative implementations (not currently used)
-
-*Note: We learned that CircuitPython on QT Py M0 works best with simpler, inline approaches rather than complex library structures.*
+- **`lib/ibus.mpy`**: Compiled iBUS protocol library (frame parsing, channel extraction, normalization, etc.)
+- **`lib/dfplayer.mpy`**: Compiled DFPlayer Pro library (sound commands, startup sequence)
 
 ## Control Mapping
 
@@ -64,14 +64,13 @@ This code controls a **3D printed Baby Chopper droid** with:
 - **Channel 4**: Servo 3 (SDA) - Head rotation
 
 ### Switch Channels:
-- **Channel 5**: 2-position switch - Sound effects and animations (currently LED feedback)
-- **Channel 6**: 2-position switch - Sound effects and animations (currently LED feedback)
+- **Channel 5**: 2-position switch - Sound effects (DFPlayer Pro, LED feedback)
+- **Channel 6**: 2-position switch - Sound effects (DFPlayer Pro, LED feedback)
 - **Channel 8**: 3-position switch - Sound effects and animations (currently LED feedback)
+- **Channel 7 (POT)**: Volume control for DFPlayer Pro
 
-### Future Planned:
-- **POT Channel**: Volume control for DFPlayer Pro
-- **Switch Sound Effects**: Channels 5, 6, 8 trigger droid sounds
-- **Switch Animations**: Coordinated movement sequences with sounds
+### Features:
+- **DFPlayer Pro**: Plays sound effects on switch triggers, volume set by channel 7 (POT)
 
 ## System Architecture
 
@@ -85,10 +84,16 @@ graph TB
     E --> F[Channel Extractor]
     F --> G[Servo Controller]
     F --> H[Switch Monitor]
-    G --> I[Servo 1 - A2 Drive Motor 1]
-    G --> J[Servo 2 - A3 Drive Motor 2]
-    G --> K[Servo 3 - SDA Head Rotation]
-    H --> L[NeoPixel LED Visual Feedback]
+    F --> M[Volume Control - POT]
+    H --> I[DFPlayer Pro Sound Trigger]
+    M --> J[DFPlayer Pro Volume]
+    I --> K[DFPlayer Pro Module]
+    J --> K
+    K --> L[Speaker]
+    G --> N[Servo 1 - A2 Drive Motor 1]
+    G --> O[Servo 2 - A3 Drive Motor 2]
+    G --> P[Servo 3 - SDA Head Rotation]
+    H --> Q[NeoPixel LED Visual Feedback]
 ```
 
 ### iBUS Frame Processing Sequence
@@ -99,6 +104,8 @@ sequenceDiagram
     participant QT as QT Py M0
     participant Servo as Servos
     participant LED as NeoPixel
+    participant DF as DFPlayer Pro
+    participant SPK as Speaker
     
     loop Every 20ms
         TX->>RX: Control inputs
@@ -116,8 +123,13 @@ sequenceDiagram
         
         alt Switch position changed
             QT->>LED: Show color for 1 second
+            QT->>DF: Play sound effect
+            DF->>SPK: Output sound
             QT->>LED: Turn off
         end
+        
+        QT->>QT: Extract channel 7 (POT)
+        QT->>DF: Set volume
     end
 ```
 
@@ -129,8 +141,10 @@ stateDiagram-v2
     Checking --> Changed: Position differs
     Checking --> Reading: Same position
     Changed --> LEDDisplay: Show color
+    Changed --> Sound: Play sound (DFPlayer Pro)
     LEDDisplay --> LEDOff: After 1 second
     LEDOff --> Reading
+    Sound --> Reading
     
     state "2-Position Switch Logic" as TwoPos {
         [*] --> Low
@@ -147,81 +161,50 @@ stateDiagram-v2
     }
 ```
 
-### iBUS Frame Structure
-```mermaid
-packet-beta
-    title iBUS Frame (32 bytes)
-    0-7: "Header"
-    8-15: "0x20"
-    16-23: "0x40"
-    24-31: "Ch1_L"
-    32-39: "Ch1_H"
-    40-47: "Ch2_L"
-    48-55: "Ch2_H"
-    56-63: "..."
-    64-71: "Ch14_L"
-    72-79: "Ch14_H"
-    80-87: "CRC_L"
-    88-95: "CRC_H"
-```
+## Library Structure and Memory Optimization
 
-### Servo Control Flow
-```mermaid
-flowchart TD
-    A[Raw iBUS Value 800-2200] --> B{Valid Range?}
-    B -->|No| C[Use Default 1500]
-    B -->|Yes| D[Normalize to -1.0 to 1.0]
-    D --> E{Within Deadband ±0.02?}
-    E -->|Yes| F[Set Throttle = 0]
-    E -->|No| G[Set Servo Throttle]
-    C --> F
-    F --> H[Servo Motor]
-    G --> H
-    
-    style A fill:#e1f5fe
-    style H fill:#c8e6c9
-    style F fill:#ffecb3
-    style G fill:#ffecb3
-```
+To maximize available RAM and keep `code.py` clean:
+- **iBUS protocol code** is in `lib/ibus.mpy` (compiled from `ibus.py`)
+- **DFPlayer Pro code** is in `lib/dfplayer.mpy` (compiled from `dfplayer.py`)
+- **All configuration and main loop logic** remain in `code.py`
+- **No unused imports or global dictionaries** (e.g., colors are now direct tuples)
+- **Garbage collection (`collect()`)** is used strategically to free memory
 
-## Code Structure
+This structure allows for larger features and more reliable operation on memory-constrained boards like the QT Py M0.
 
-The current implementation uses a **clean, inline approach** in `code.py` with these key features:
+### Helper Functions (now in libraries):
+- **`ibus.extract_channel_value()`**: Get raw values from iBUS frame
+- **`ibus.normalize_servo_value()`**: Convert to servo throttle with deadband
+- **`ibus.get_switch_position()`**: Handle 2 and 3-position switches
+- **`ibus.is_valid_frame()`**: Validate iBUS frame
+- **`ibus.map_to_volume()`**: Map POT value to DFPlayer volume
+- **`dfplayer.send_command()`**: Send AT command to DFPlayer Pro
+- **`dfplayer.startup_sequence()`**: Initialize DFPlayer Pro
 
-### Configuration-Driven Design:
-```python
-CONFIG = {
-    'servo_channels': [1, 2, 4],      # iBUS channels for servos
-    'servo_byte_pos': [2, 4, 8],     # Byte positions in iBUS frame
-    'switch_channels': [5, 6, 8],    # iBUS channels for switches
-    'switch_colors': [
-        [colors['purple'], colors['orange']],              # Switch 1: 2-position
-        [colors['cyan'], colors['blue']],                  # Switch 2: 2-position  
-        [colors['magenta'], colors['cyan'], colors['yellow']] # Switch 3: 3-position
-    ],
-    'deadband': 0.02,
-    'switch_3pos_thresholds': [1300, 1700]
-}
-```
-
-### Helper Functions:
-- **`extract_channel_value()`**: Get raw values from iBUS frame
-- **`normalize_servo_value()`**: Convert to servo throttle with deadband
-- **`get_switch_position()`**: Handle 2 and 3-position switches
-- **`show_switch_color()`**: LED feedback system
+### Application Functions (in `code.py`):
+- **`show_switch_color()`**: LED feedback and sound cycling
 - **`update_servos()`**: Process all servos in loop
 - **`update_switches()`**: Handle switch monitoring
+- **`update_volume()`**: Handle volume changes
 - **`parse_ibus_frame()`**: Main frame processing
 
 ### Main Loop:
 ```python
+loop_counter = 0
 while True:
     data = uart.read(32)
     if data:
         parse_ibus_frame(data)
-    controller.update()  # Compatibility placeholder
-    time.sleep(0.05)  # 20Hz updates
+    # Periodic garbage collection every 100 loops (~5 seconds at 20Hz)
+    loop_counter += 1
+    if loop_counter >= 100:
+        collect()
+        loop_counter = 0
+    sleep(0.05)  # 20Hz updates
 ```
+- Reads iBUS data, updates servos, switches, and volume.
+- Triggers sound effects and LED feedback on switch changes.
+- Periodically runs garbage collection to free memory.
 
 ## LED Status Indicators
 
@@ -241,7 +224,7 @@ The built-in NeoPixel currently provides feedback for switch positions *(will be
 - **Yellow**: Position 2 (High) - *Future: Animation mode 3*
 
 ### Startup:
-- **White**: System starting up
+- **Green**: System starting up
 
 ## Baby Chopper Droid Control
 
@@ -270,13 +253,15 @@ The Baby Chopper uses **differential drive** (tank steering) where channels 1 an
 - **Deadband**: 2% around center to prevent drift
 
 ### Switch Functions (Current):
-- **Switches 1 & 2**: LED feedback only (will become sound effect triggers)
+- **Switches 1 & 2**: LED feedback only and sound effect triggers
 - **Switch 3**: LED feedback only (will become animation mode selection)
 
-### Future Enhancements:
+### Sound ###
 - **Sound Effects**: DFPlayer Pro integration with switch triggers
-- **Animations**: Pre-programmed movement sequences triggered by switches
 - **Volume Control**: POT channel for audio levels
+
+### Future Enhancements:
+- **Animations**: Pre-programmed movement and sound sequences triggered by switches
 - **LED Replacement**: Switch LED feedback replaced with sound/movement responses
 
 ## iBUS Protocol Implementation
@@ -295,7 +280,7 @@ The Baby Chopper uses **differential drive** (tank steering) where channels 1 an
 ### Channel Data Extraction:
 ```python
 def extract_channel_value(data, byte_pos):
-    """Extract 16-bit channel value from iBUS data"""
+    """Extract 16-bit channel value from iBUS frame"""
     if len(data) > byte_pos + 1:
         return (data[byte_pos + 1] << 8) | data[byte_pos]
     return 1500
@@ -353,17 +338,11 @@ def normalize_servo_value(raw_value):
 
 ## Development Notes
 
-### Why Inline Implementation?
-We discovered that CircuitPython on QT Py M0 works best with simpler approaches:
-- **Complex libraries cause import crashes** and yellow error blinks
-- **Inline code is more reliable** and easier to debug
-- **Memory constraints** favor monolithic design
-- **Direct hardware access** provides better performance
-
 ### Pin Selection:
 - **A0, A1**: Cannot do PWM (used A2, A3, SDA instead)
 - **A7**: RX pin for iBUS data
-- **TX**: Reserved for future DFPlayer Pro communication
+- **TX**: Did not work for DFPlayer Pro communication
+- **D10**: Works for DFDlayer Pro communication
 
 ## Future Roadmap
 
@@ -372,13 +351,13 @@ We discovered that CircuitPython on QT Py M0 works best with simpler approaches:
 - ✅ Switch monitoring with LED feedback
 - ✅ Elegant inline code structure
 
-### Phase 2 (Planned):
+### Phase 2 (Current):
 - 🔄 DFPlayer Pro integration  
 - 🔄 POT volume control
 - 🔄 Replace LED feedback with sound effects
-- 🔄 Switch-triggered animations
 
-### Phase 3 (Future):
+### Phase 3 (Planned):
+- 📋 Switch-triggered animations
 - 📋 Pre-programmed movement animations
 - 📋 Coordinated movement + sound sequences
 - 📋 Baby Chopper personality behaviors
